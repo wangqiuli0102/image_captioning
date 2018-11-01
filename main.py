@@ -4,6 +4,8 @@ import tensorflow as tf
 from config import Config
 from model import CaptionGenerator
 from dataset import prepare_train_data, prepare_eval_data, prepare_test_data
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 FLAGS = tf.app.flags.FLAGS
 
