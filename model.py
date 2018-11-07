@@ -194,6 +194,7 @@ class CaptionGenerator(BaseModel):
 
         # Setup the placeholders
         if self.is_train:
+            # (32, 196, 512)
             contexts = self.conv_feats
             sentences = tf.placeholder(
                 dtype = tf.int32,
@@ -237,7 +238,11 @@ class CaptionGenerator(BaseModel):
 
         # Initialize the LSTM using the mean context
         with tf.variable_scope("initialize"):
+            #print "shape of conv_feats: ", self.conv_feats.get_shape()
+            # (32, 196, 512)
             context_mean = tf.reduce_mean(self.conv_feats, axis = 1)
+            #print "shape of context_mean: ", context_mean.get_shape()
+            # (32, 512)
             initial_memory, initial_output = self.initialize(context_mean)
             initial_state = initial_memory, initial_output
 
@@ -260,12 +265,17 @@ class CaptionGenerator(BaseModel):
             # Attention mechanism
             with tf.variable_scope("attend"):
                 alpha = self.attend(contexts, last_output)
+                #alpha shape:  (32, 196)
+                #contexts and expand_dims (32, 196, 512) (32, 196, 1)
                 context = tf.reduce_sum(contexts*tf.expand_dims(alpha, 2),
                                         axis = 1)
+                #context shape:  (32, 512)
                 if self.is_train:
                     tiled_masks = tf.tile(tf.expand_dims(masks[:, idx], 1),
                                          [1, self.num_ctx])
+                    #tiled_masks shape:  (32, 196)
                     masked_alpha = alpha * tiled_masks
+                    #masked_alpha shape:  (32, 196)
                     alphas.append(tf.reshape(masked_alpha, [-1]))
 
             # Embed the last word
@@ -390,12 +400,16 @@ class CaptionGenerator(BaseModel):
                                    units = config.num_lstm_units,
                                    activation = None,
                                    name = 'fc_b2')
+        # print 'memory, output shape: ', memory.get_shape(), output.get_shape()
+        # (32, 512) (32, 512)
         return memory, output
 
     def attend(self, contexts, output):
         """ Attention Mechanism. """
         config = self.config
         reshaped_contexts = tf.reshape(contexts, [-1, self.dim_ctx])
+        # print 'reshaped_contexts: ', reshaped_contexts.get_shape()
+        # 6272 512
         reshaped_contexts = self.nn.dropout(reshaped_contexts)
         output = self.nn.dropout(output)
         if config.num_attend_layers == 1:
@@ -418,20 +432,35 @@ class CaptionGenerator(BaseModel):
                                   units = config.dim_attend_layer,
                                   activation = tf.tanh,
                                   name = 'fc_1a')
+            print 'shape of temp1: ', temp1.get_shape()
+            # 6272, 512
             temp2 = self.nn.dense(output,
                                   units = config.dim_attend_layer,
                                   activation = tf.tanh,
                                   name = 'fc_1b')
+            # 32, 512
             temp2 = tf.tile(tf.expand_dims(temp2, 1), [1, self.num_ctx, 1])
+            # 32, 196, 512
+            print 'shape of temp2: ', temp2.get_shape()
+
             temp2 = tf.reshape(temp2, [-1, config.dim_attend_layer])
+            print 'shape of temp2: ', temp2.get_shape()
+            # 6272, 512
             temp = temp1 + temp2
+            print 'shape of temp: ', temp.get_shape()
+            # 6272, 512
             temp = self.nn.dropout(temp)
             logits = self.nn.dense(temp,
                                    units = 1,
                                    activation = None,
                                    use_bias = False,
                                    name = 'fc_2')
+            print 'shape of logits: ', logits.get_shape()
+            # 6272, 1
             logits = tf.reshape(logits, [-1, self.num_ctx])
+            # 32, 196
+            print 'shape of logits: ', logits.get_shape()
+
         alpha = tf.nn.softmax(logits)
         return alpha
 
